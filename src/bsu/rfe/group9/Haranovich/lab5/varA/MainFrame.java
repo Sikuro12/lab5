@@ -1,77 +1,166 @@
 package bsu.rfe.group9.Haranovich.lab5.varA;
 
-import java.io.IOException;
-import java.io.FileNotFoundException;
-import javax.swing.JOptionPane;
-import java.util.ArrayList;
-import java.io.InputStream;
-import java.io.DataInputStream;
-import java.io.FileInputStream;
-import java.io.File;
-import javax.swing.Action;
-import java.awt.Component;
-import javax.swing.JMenu;
-import javax.swing.JMenuBar;
+import java.awt.BorderLayout;
 import java.awt.Toolkit;
-import javax.swing.JMenuItem;
+import java.awt.event.ActionEvent;
+import java.io.DataInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import javax.swing.AbstractAction;
+import javax.swing.Action;
+import javax.swing.JCheckBoxMenuItem;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
+import javax.swing.JOptionPane;
+import javax.swing.event.MenuEvent;
+import javax.swing.event.MenuListener;
 
-public class MainFrame extends JFrame
-{
-    private static final int WIDTH = 700;
-    private static final int HEIGHT = 500;
-    private JFileChooser fileChooser;
-    private JMenuItem resetGraphicsMenuItem;
-    private GraphicsDisplay display;
-    private boolean fileLoaded;
-    
+@SuppressWarnings("serial")
+public class MainFrame extends JFrame {
+
+    private static final int WIDTH = 800;
+    private static final int HEIGHT = 600;
+
+    private JFileChooser fileChooser = null;
+
+    private JCheckBoxMenuItem showAxisMenuItem;
+    private JCheckBoxMenuItem showMarkersMenuItem;
+    private JCheckBoxMenuItem showIntGraphicsMenuItem;
+    // Компонент-отображатель графика
+    private GraphicsDisplay display = new GraphicsDisplay();
+    // Флаг, указывающий на загруженность данных графика
+    private boolean fileLoaded = false;
+
     public MainFrame() {
-        super("\u041e\u0431\u0440\u0430\u0431\u043e\u0442\u043a\u0430 \u0441\u043e\u0431\u044b\u0442\u0438\u0439 \u043e\u0442 \u043c\u044b\u0448\u0438");
-        this.fileChooser = null;
-        this.display = new GraphicsDisplay();
-        this.fileLoaded = false;
-        this.setSize(700, 500);
-        final Toolkit kit = Toolkit.getDefaultToolkit();
-        this.setLocation((kit.getScreenSize().width - 700) / 2, (kit.getScreenSize().height - 500) / 2);
-        this.setExtendedState(6);
-        final JMenuBar menuBar = new JMenuBar();
-        this.setJMenuBar(menuBar);
-        final JMenu fileMenu = new JMenu("\u0424\u0430\u0439\u043b");
+
+        super("Построение графиков функций на основе заранее подготовленных файлов");
+        setSize(WIDTH, HEIGHT);
+        Toolkit kit = Toolkit.getDefaultToolkit();
+        setLocation((kit.getScreenSize().width - WIDTH) / 2,
+                (kit.getScreenSize().height - HEIGHT) / 2);
+        setExtendedState(MAXIMIZED_BOTH);
+
+        JMenuBar menuBar = new JMenuBar();
+        setJMenuBar(menuBar);
+        JMenu fileMenu = new JMenu("Файл");
         menuBar.add(fileMenu);
-        final Action openGraphicsAction = (Action)new MainFrame.MainFrame$1(this, "\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0444\u0430\u0439\u043b \u0441 \u0433\u0440\u0430\u0444\u0438\u043a\u043e\u043c");
+
+        Action openGraphicsAction = new AbstractAction("Открыть файл с графиком") {
+            public void actionPerformed(ActionEvent event) {
+                if (fileChooser == null) {
+                    fileChooser = new JFileChooser();
+                    fileChooser.setCurrentDirectory(new File("."));
+                }
+                if (fileChooser.showOpenDialog(MainFrame.this) == JFileChooser.APPROVE_OPTION)
+                    openGraphics(fileChooser.getSelectedFile());
+            }
+        };
+
         fileMenu.add(openGraphicsAction);
-        final Action resetGraphicsAction = (Action)new MainFrame.MainFrame$2(this, "\u041e\u0442\u043c\u0435\u043d\u0438\u0442\u044c \u0432\u0441\u0435 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f");
-        (this.resetGraphicsMenuItem = fileMenu.add(resetGraphicsAction)).setEnabled(false);
-        this.getContentPane().add((Component)this.display, "Center");
+        JMenu graphicsMenu = new JMenu("График");
+        menuBar.add(graphicsMenu);
+        Action showAxisAction = new AbstractAction("Показывать оси координат") {
+            public void actionPerformed(ActionEvent event) {
+                // свойство showAxis класса GraphicsDisplay истина, если элемент меню
+                // showAxisMenuItem отмечен флажком, и ложь - в противном случае
+                display.setShowAxis(showAxisMenuItem.isSelected());
+            }
+        };
+
+        showAxisMenuItem = new JCheckBoxMenuItem(showAxisAction);
+        graphicsMenu.add(showAxisMenuItem);
+        // Элемент по умолчанию включен (отмечен флажком)
+        showAxisMenuItem.setSelected(true);
+        // Повторить действия для элемента "Показывать маркеры точек"
+        Action showMarkersAction = new AbstractAction("Показывать маркеры точек") {
+            public void actionPerformed(ActionEvent event) {
+                // по аналогии с showAxisMenuItem
+                display.setShowMarkers(showMarkersMenuItem.isSelected());
+            }
+        };
+
+        showMarkersMenuItem = new JCheckBoxMenuItem(showMarkersAction);
+        graphicsMenu.add(showMarkersMenuItem);
+        // Элемент по умолчанию включен (отмечен флажком)
+        showMarkersMenuItem.setSelected(true);
+        // Зарегистрировать обработчик событий, связанных с меню "График"
+        graphicsMenu.addMenuListener(new GraphicsMenuListener());
+        getContentPane().add(display, BorderLayout.CENTER);
     }
-    
-    protected void openGraphics(final File selectedFile) {
+
+    // Считывание данных графика из существующего файла
+    protected void openGraphics(File selectedFile) {
         try {
-            final DataInputStream in = new DataInputStream(new FileInputStream(selectedFile));
-            final ArrayList<Double[]> graphicsData = new ArrayList<Double[]>(50);
+            // Шаг 1 - Открыть поток чтения данных, связанный с входным файловым потоком
+            DataInputStream in = new DataInputStream(new
+                    FileInputStream(selectedFile));
+
+            // Шаг 2 - Зная объём данных в потоке ввода можно вычислить, сколько памяти нужно зарезервировать в массиве:
+            // Всего байт в потоке - in.available() байт;
+            // Размер одного числа Double - Double.SIZE бит, или Double.SIZE/8 байт;
+            // Так как числа записываются парами, то число пар меньше в 2 раза
+            Double[][] graphicsData = new Double[in.available() / (Double.SIZE / 8) / 2][];
+
+            // Шаг 3 - Цикл чтения данных (пока в потоке есть данные)
+            int i = 0;
             while (in.available() > 0) {
-                final Double x = in.readDouble();
-                final Double y = in.readDouble();
-                graphicsData.add(new Double[] { x, y });
+                Double x = in.readDouble();
+                Double y = in.readDouble();
+                graphicsData[i++] = new Double[]{x, y};
             }
-            if (graphicsData.size() > 0) {
-                this.fileLoaded = true;
-                this.resetGraphicsMenuItem.setEnabled(true);
-                this.display.displayGraphics((ArrayList)graphicsData);
+
+            // Шаг 4 - Проверка, имеется ли в списке в результате чтенияхотя бы одна пара координат
+            if (graphicsData != null && graphicsData.length > 0) {
+                // Да - установить флаг загруженности данных
+                fileLoaded = true;
+                // Вызывать метод отображения графика
+                display.showGraphics(graphicsData);
             }
-        }
-        catch (FileNotFoundException ex) {
-            JOptionPane.showMessageDialog(this, "\u0423\u043a\u0430\u0437\u0430\u043d\u043d\u044b\u0439 \u0444\u0430\u0439\u043b \u043d\u0435 \u043d\u0430\u0439\u0434\u0435\u043d", "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0434\u0430\u043d\u043d\u044b\u0445", 2);
-        }
-        catch (IOException ex2) {
-            JOptionPane.showMessageDialog(this, "\u041e\u0448\u0438\u0431\u043a\u0430 \u0447\u0442\u0435\u043d\u0438\u044f \u043a\u043e\u043e\u0440\u0434\u0438\u043d\u0430\u0442 \u0442\u043e\u0447\u0435\u043a \u0438\u0437 \u0444\u0430\u0439\u043b\u0430", "\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0434\u0430\u043d\u043d\u044b\u0445", 2);
+
+            // Шаг 5 - Закрыть входной поток
+            in.close();
+        } catch (FileNotFoundException ex) {
+            JOptionPane.showMessageDialog(MainFrame.this,
+                    "Указанный файл не найден",
+                    "Ошибка загрузки данных",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        } catch (IOException ex) {
+            JOptionPane.showMessageDialog(MainFrame.this,
+                    "Ошибка чтения координат точек из файла",
+                    "Ошибка загрузки данных",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
         }
     }
-    
-    public static void main(final String[] args) {
-        final MainFrame frame = new MainFrame();
-        frame.setDefaultCloseOperation(3);
+
+    public static void main(String[] args) {
+        // Создать и показать экземпляр главного окна приложения
+        MainFrame frame = new MainFrame();
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         frame.setVisible(true);
+    }
+
+    // Класс-слушатель событий, связанных с отображением меню
+    private class GraphicsMenuListener implements MenuListener {
+        // Обработчик, вызываемый перед показом меню
+        public void menuSelected(MenuEvent e) {
+            // Доступность или недоступность элементов меню "График" определяется загруженностью данных
+            showAxisMenuItem.setEnabled(fileLoaded);
+            showMarkersMenuItem.setEnabled(fileLoaded);
+            showIntGraphicsMenuItem.setEnabled(fileLoaded);
+        }
+
+        // Обработчик, вызываемый после того, как меню исчезло с экрана
+        public void menuDeselected(MenuEvent e) {
+        }
+
+        // Обработчик, вызываемый в случае отмены выбора пункта меню (очень редкая ситуация)
+        public void menuCanceled(MenuEvent e) {
+        }
     }
 }
